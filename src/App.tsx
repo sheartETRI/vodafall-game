@@ -38,18 +38,42 @@ export default function App() {
   const isProcessingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const toggleMusic = async () => {
+  if (!audioRef.current) {
+    audioRef.current = new Audio(BGM_URL);
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.3;
+    audioRef.current.preload = 'auto';
+  }
+
+  const next = !isMusicOn;
+  setIsMusicOn(next);
+
+  if (next) {
+    try {
+      audioRef.current.currentTime = 0;
+      await audioRef.current.play();
+    } catch (e) {
+      console.log('Audio play failed:', e);
+    }
+  } else {
+    audioRef.current.pause();
+  }
+ };
+
   // Music control
   useEffect(() => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio(BGM_URL);
-      audioRef.current.loop = true;
-      audioRef.current.volume = 0.3;
-    }
+  if (!audioRef.current) {
+    audioRef.current = new Audio(BGM_URL);
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.3;
+    audioRef.current.preload = 'auto';
+  }
 
-    if (isMusicOn && (gameState.status === 'playing' || gameState.status === 'studying')) {
-      audioRef.current.play().catch(e => console.log("Audio play blocked", e));
-    } else {
-      audioRef.current.pause();
+  if (!(gameState.status === 'playing' || gameState.status === 'studying')) {
+    audioRef.current.pause();
+    } else if (!isMusicOn) {
+    audioRef.current.pause();
     }
   }, [isMusicOn, gameState.status]);
 
@@ -210,18 +234,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gameState.status, options, feedback, handleSelect]);
 
-  const startGame = (difficulty: Difficulty, stage: number) => {
-    lastTimeRef.current = null;
-    setGameState({
-      score: 0,
-      life: INITIAL_LIFE,
-      level: stage,
-      combo: 0,
-      status: 'playing',
-      difficulty,
-      stageProgress: 0,
-    });
-    generateNewWord();
+ const startGame = async (difficulty: Difficulty, stage: number) => {
+  lastTimeRef.current = null;
+  setGameState({
+    score: 0,
+    life: INITIAL_LIFE,
+    level: stage,
+    combo: 0,
+    status: 'playing',
+    difficulty,
+    stageProgress: 0,
+  });
+  generateNewWord();
+
+  if (isMusicOn && audioRef.current) {
+    try {
+      await audioRef.current.play();
+    } catch (e) {
+      console.log('Audio play failed on startGame:', e);
+    }
+  }
   };
 
   const selectStage = (stage: number) => {
@@ -261,7 +293,7 @@ export default function App() {
           />
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => setIsMusicOn(!isMusicOn)}
+              onClick={toggleMusic}
               className={`p-3 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-1 active:translate-y-1 active:shadow-none ${isMusicOn ? 'bg-yellow-400' : 'bg-gray-300'}`}
               title={isMusicOn ? "Music Off" : "Music On"}
             >
