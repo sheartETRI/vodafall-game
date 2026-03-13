@@ -5,7 +5,7 @@ import { OptionsPanel } from './components/OptionsPanel';
 import { GameOver } from './components/GameOver';
 import { WORDS } from './constants';
 import { WordEntry, GameState, Difficulty } from './types';
-import { Play, Shield, Zap, Flame, Volume2, VolumeX } from 'lucide-react';
+import { Play, Shield, Zap, Flame, Volume2, VolumeX, Music } from 'lucide-react';
 
 const INITIAL_LIFE = 5;
 const FALL_SPEEDS: Record<Difficulty, number> = {
@@ -15,6 +15,8 @@ const FALL_SPEEDS: Record<Difficulty, number> = {
 };
 
 const BGM_URL = `${import.meta.env.BASE_URL}counting-song.wav`;
+const CORRECT_SFX_URL = `${import.meta.env.BASE_URL}correct.wav`;
+const WRONG_SFX_URL = `${import.meta.env.BASE_URL}wrong.wav`;
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
@@ -32,48 +34,44 @@ export default function App() {
   const [yPos, setYPos] = useState(-20);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [isMusicOn, setIsMusicOn] = useState(false);
+  const [isSfxOn, setIsSfxOn] = useState(true);
   
   const requestRef = useRef<number>(null);
   const lastTimeRef = useRef<number>(null);
   const isProcessingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const sfxCorrectRef = useRef<HTMLAudioElement | null>(null);
+  const sfxWrongRef = useRef<HTMLAudioElement | null>(null);
 
-  const toggleMusic = async () => {
-  if (!audioRef.current) {
-    audioRef.current = new Audio(BGM_URL);
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0.3;
-    audioRef.current.preload = 'auto';
-  }
+  useEffect(() => {
+    sfxCorrectRef.current = new Audio(CORRECT_SFX_URL);
+    sfxWrongRef.current = new Audio(WRONG_SFX_URL);
+    sfxCorrectRef.current.load();
+    sfxWrongRef.current.load();
+  }, []);
 
-  const next = !isMusicOn;
-  setIsMusicOn(next);
-
-  if (next) {
-    try {
-      audioRef.current.currentTime = 0;
-      await audioRef.current.play();
-    } catch (e) {
-      console.log('Audio play failed:', e);
+  const playSFX = useCallback((url: string) => {
+    if (!isSfxOn) return;
+    const audio = url === CORRECT_SFX_URL ? sfxCorrectRef.current : sfxWrongRef.current;
+    if (audio) {
+      audio.currentTime = 0;
+      audio.volume = 0.5;
+      audio.play().catch(e => console.log("SFX play blocked", e));
     }
-  } else {
-    audioRef.current.pause();
-  }
- };
+  }, [isSfxOn]);
 
   // Music control
   useEffect(() => {
-  if (!audioRef.current) {
-    audioRef.current = new Audio(BGM_URL);
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0.3;
-    audioRef.current.preload = 'auto';
-  }
+    if (!audioRef.current) {
+      audioRef.current = new Audio(BGM_URL);
+      audioRef.current.loop = true;
+      audioRef.current.volume = 0.3;
+    }
 
-  if (!(gameState.status === 'playing' || gameState.status === 'studying')) {
-    audioRef.current.pause();
-    } else if (!isMusicOn) {
-    audioRef.current.pause();
+    if (isMusicOn && (gameState.status === 'playing' || gameState.status === 'studying')) {
+      audioRef.current.play().catch(e => console.log("Audio play blocked", e));
+    } else {
+      audioRef.current.pause();
     }
   }, [isMusicOn, gameState.status]);
 
@@ -109,6 +107,7 @@ export default function App() {
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     setFeedback('correct');
+    playSFX(CORRECT_SFX_URL);
     
     setGameState(prev => {
       const comboBonus = prev.combo >= 10 ? 20 : prev.combo >= 5 ? 10 : prev.combo >= 3 ? 5 : 0;
@@ -144,6 +143,7 @@ export default function App() {
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     setFeedback('wrong');
+    playSFX(WRONG_SFX_URL);
     
     setGameState(prev => {
       const newLife = prev.life - 1;
@@ -169,6 +169,7 @@ export default function App() {
   const handleIncorrectSelection = useCallback(() => {
     // Don't set isProcessingRef.current = true here because we want to allow more guesses
     setFeedback('wrong');
+    playSFX(WRONG_SFX_URL);
     
     setGameState(prev => {
       return {
@@ -234,26 +235,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gameState.status, options, feedback, handleSelect]);
 
- const startGame = async (difficulty: Difficulty, stage: number) => {
-  lastTimeRef.current = null;
-  setGameState({
-    score: 0,
-    life: INITIAL_LIFE,
-    level: stage,
-    combo: 0,
-    status: 'playing',
-    difficulty,
-    stageProgress: 0,
-  });
-  generateNewWord();
-
-  if (isMusicOn && audioRef.current) {
-    try {
-      await audioRef.current.play();
-    } catch (e) {
-      console.log('Audio play failed on startGame:', e);
-    }
-  }
+  const startGame = (difficulty: Difficulty, stage: number) => {
+    lastTimeRef.current = null;
+    setGameState({
+      score: 0,
+      life: INITIAL_LIFE,
+      level: stage,
+      combo: 0,
+      status: 'playing',
+      difficulty,
+      stageProgress: 0,
+    });
+    generateNewWord();
   };
 
   const selectStage = (stage: number) => {
@@ -293,11 +286,18 @@ export default function App() {
           />
           <div className="flex items-center gap-2">
             <button 
-              onClick={toggleMusic}
+              onClick={() => setIsMusicOn(!isMusicOn)}
               className={`p-3 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-1 active:translate-y-1 active:shadow-none ${isMusicOn ? 'bg-yellow-400' : 'bg-gray-300'}`}
-              title={isMusicOn ? "Music Off" : "Music On"}
+              title={isMusicOn ? "BGM Off" : "BGM On"}
             >
-              {isMusicOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+              {isMusicOn ? <Music className="w-6 h-6" /> : <Music className="w-6 h-6 opacity-40" />}
+            </button>
+            <button 
+              onClick={() => setIsSfxOn(!isSfxOn)}
+              className={`p-3 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-1 active:translate-y-1 active:shadow-none ${isSfxOn ? 'bg-blue-400' : 'bg-gray-300'}`}
+              title={isSfxOn ? "SFX Off" : "SFX On"}
+            >
+              {isSfxOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
             </button>
           </div>
         </div>
